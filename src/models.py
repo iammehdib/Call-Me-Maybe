@@ -7,6 +7,7 @@ class ParamType(BaseModel):
 
     type: Literal["number", "integer", "string", "boolean"]
 
+
 class FunctionDefinition(BaseModel):
     """A callable function the LLM can choose from."""
 
@@ -15,10 +16,12 @@ class FunctionDefinition(BaseModel):
     parameters: Dict[str, ParamType]
     returns: ParamType
 
+
 class PromptInput(BaseModel):
     """A natural language request to translate."""
 
     prompt: str
+
 
 class FunctionCall(BaseModel):
     """The function call produced for one prompt."""
