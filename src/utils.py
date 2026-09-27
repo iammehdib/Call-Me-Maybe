@@ -1,8 +1,10 @@
 import json
+from pathlib import Path
 from typing import Any, List, Optional
 
 from pydantic import ValidationError
 
+from models import FunctionCall
 from src.models import FunctionDefinition, PromptInput
 
 
@@ -56,3 +58,18 @@ def load_prompts(file_name: str) -> Optional[List[PromptInput]]:
         print(f"Error: invalid prompt in {file_name}:\n{e}")
         return None
     return prompts
+
+def write_results(file_name: str, functions: List[FunctionCall]) -> bool:
+    """Write the results to file_name as JSON and return True on success."""
+    data = [result.model_dump() for result in functions]
+
+    try:
+        path = Path(file_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(file_name, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+    except OSError as e:
+        print(f"Error: cannot write {file_name}: {e}")
+        return False
+    return True
