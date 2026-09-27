@@ -1,12 +1,11 @@
 from typing import Dict, Literal, Union
 from pydantic import BaseModel
 
-ParamTypeName = Literal["number", "integer", "string", "boolean"]
 
 class ParamType(BaseModel):
     """Type declaration of a parameter or return value."""
 
-    type: ParamTypeName
+    type: Literal["number", "integer", "string", "boolean"]
 
 class FunctionDefinition(BaseModel):
     """A callable function the LLM can choose from."""
