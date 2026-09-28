@@ -22,7 +22,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default="data/output/function_calling_results.json",
+        default="data/output/function_calls.json",
     )
 
     args = parser.parse_args()
