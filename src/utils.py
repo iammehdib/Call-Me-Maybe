@@ -73,3 +73,11 @@ def write_results(file_name: str, results: List[FunctionCall]) -> bool:
         print(f"Error: cannot write {file_name}: {e}")
         return False
     return True
+
+
+def is_start(start: str, words: List[str]) -> bool:
+    """Return True if at least one of words starts with start."""
+    for word in words:
+        if word.startswith(start):
+            return True
+    return False

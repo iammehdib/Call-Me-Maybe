@@ -1,11 +1,14 @@
 import json
-from typing import ClassVar, Dict, List
+from typing import ClassVar, Dict, List, Tuple
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from llm_sdk import Small_LLM_Model
 from src.models import FunctionDefinition
+from src.utils import is_start
+
+MAX_TOKENS = 40
 
 
 class Decoder(BaseModel):
@@ -65,11 +68,35 @@ class Decoder(BaseModel):
 
         return "\n".join(lines)
 
-    def pick_token(self, ids: List[int], allowed: List[int]) -> int:
+    def pick_token(
+        self, ids: List[int], allowed_ids: List[int]
+    ) -> int:
         """Return the allowed token the LLM prefers after ids."""
         logits = np.array(self.model.get_logits_from_input_ids(ids))
 
         masked = np.full_like(logits, -np.inf)
-        masked[allowed] = logits[allowed]
+        masked[allowed_ids] = logits[allowed_ids]
 
         return int(np.argmax(masked))
+
+    def pick_word(
+        self, input_ids: List[int], words: List[str]
+    ) -> Tuple[str, List[int]]:
+        """Return the LLM's pick among words and the new input_ids."""
+        result = ""
+
+        for _ in range(MAX_TOKENS):
+            allowed_ids: List[int] = []
+            for token_id, token in enumerate(self._vocab):
+                candidate_word = result + token
+                if token != "" and is_start(candidate_word, words):
+                    allowed_ids.append(token_id)
+
+            chosen = self.pick_token(input_ids, allowed_ids)
+            input_ids = input_ids + [chosen]
+            result = result + self._vocab[chosen]
+
+            if result in words:
+                break
+
+        return result, input_ids
