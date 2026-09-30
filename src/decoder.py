@@ -1,6 +1,7 @@
 import json
 from typing import ClassVar, Dict, List
 
+import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from llm_sdk import Small_LLM_Model
@@ -41,3 +42,34 @@ class Decoder(BaseModel):
             vocab.append(model.decode([token_id]))
         cls.vocab_cache[path] = vocab
         return vocab
+
+    @staticmethod
+    def format_function(function: FunctionDefinition) -> str:
+        """Return a one-line description of function for the LLM."""
+        params: str = ", ".join(
+            f"{name}: {param.type}"
+            for name, param in function.parameters.items()
+        )
+
+        return f"- {function.name}({params}): {function.description}"
+
+    def build_prompt(self, prompt: str) -> str:
+        """Return the text given to the LLM for prompt."""
+        lines: list[str] = ["Available functions:"]
+
+        for function in self.functions:
+            lines.append(self.format_function(function))
+        lines.append("")
+        lines.append(f"Question: {prompt}")
+        lines.append('Answer: {"name": "')
+
+        return "\n".join(lines)
+
+    def pick_token(self, ids: List[int], allowed: List[int]) -> int:
+        """Return the allowed token the LLM prefers after ids."""
+        logits = np.array(self.model.get_logits_from_input_ids(ids))
+
+        masked = np.full_like(logits, -np.inf)
+        masked[allowed] = logits[allowed]
+
+        return int(np.argmax(masked))
