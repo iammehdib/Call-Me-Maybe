@@ -1,11 +1,11 @@
 import json
-from typing import ClassVar, Dict, List, Tuple
+from typing import ClassVar, Dict, List, Tuple, Union
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from llm_sdk import Small_LLM_Model
-from src.models import FunctionDefinition
+from src.models import FunctionCall, FunctionDefinition, PromptInput
 from src.utils import is_start
 
 MAX_TOKENS = 40
@@ -100,3 +100,37 @@ class Decoder(BaseModel):
                 break
 
         return result, input_ids
+
+    def _pick_parameters(
+        self, function: FunctionDefinition
+    ) -> Dict[str, Union[float, int, str, bool]]:
+        """Return a value for every parameter of function."""
+        params: Dict[str, Union[float, int, str, bool]] = {}
+
+        for key, param in function.parameters.items():
+            match param.type:
+                case "number":
+                    params[key] = 0.0
+                case "integer":
+                    params[key] = 0
+                case "string":
+                    params[key] = ""
+                case "boolean":
+                    params[key] = False
+
+        return params
+
+    def decode(self, prompt_input: PromptInput) -> FunctionCall:
+        """Return the function call the LLM chooses for prompt_input."""
+        text = self.build_prompt(prompt_input.prompt)
+        input_ids: List[int] = self.model.encode(text)[0].tolist()
+
+        names = [function.name for function in self.functions]
+        name, input_ids = self.pick_word(input_ids, names)
+        function = self.functions[names.index(name)]
+
+        return FunctionCall(
+            prompt=prompt_input.prompt,
+            name=name,
+            parameters=self._pick_parameters(function)
+        )

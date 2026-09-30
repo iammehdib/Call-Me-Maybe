@@ -1,6 +1,6 @@
 import argparse
 import sys
-from typing import Dict, List, Optional, Union
+from typing import List, Optional
 
 from llm_sdk import Small_LLM_Model
 
@@ -44,34 +44,9 @@ def main() -> None:
     decoder: Decoder = Decoder(model, functions)
     results: List[FunctionCall] = []
     for prompt in prompts:
-        lines: str = decoder.build_prompt(prompt.prompt)
-        print(lines)
-        results.append(fake_call(prompt, functions[0]))
+        results.append(decoder.decode(prompt))
     if not write_results(args.output, results):
         sys.exit(1)
-
-
-def fake_call(
-    prompt: PromptInput, function: FunctionDefinition
-) -> FunctionCall:
-    """Return a placeholder call to function for prompt."""
-    parameters: Dict[str, Union[float, int, str, bool]] = {}
-    for name, param_type in function.parameters.items():
-        match param_type.type:
-            case "number":
-                parameters[name] = 0.0
-            case "integer":
-                parameters[name] = 0
-            case "string":
-                parameters[name] = ""
-            case "boolean":
-                parameters[name] = False
-
-    return FunctionCall(
-        prompt=prompt.prompt,
-        name=function.name,
-        parameters=parameters
-    )
 
 
 if __name__ == "__main__":
