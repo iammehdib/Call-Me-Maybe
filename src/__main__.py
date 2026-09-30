@@ -2,6 +2,9 @@ import argparse
 import sys
 from typing import Dict, List, Optional, Union
 
+from llm_sdk import Small_LLM_Model
+
+from src.decoder import Decoder
 from src.models import FunctionCall, FunctionDefinition, PromptInput
 from src.utils import load_functions, load_prompts, write_results
 
@@ -37,8 +40,12 @@ def main() -> None:
         print("Error: empty functions defined in file")
         sys.exit(1)
 
+    model: Small_LLM_Model = Small_LLM_Model()
+    decoder: Decoder = Decoder(model, functions)
     results: List[FunctionCall] = []
     for prompt in prompts:
+        lines: str = decoder.build_prompt(prompt.prompt)
+        print(lines)
         results.append(fake_call(prompt, functions[0]))
     if not write_results(args.output, results):
         sys.exit(1)
