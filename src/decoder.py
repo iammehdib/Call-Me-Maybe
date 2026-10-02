@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from llm_sdk import Small_LLM_Model
 from src.models import FunctionCall, FunctionDefinition, PromptInput
-from src.utils import is_start
+from src.utils import is_start, unescape
 
 MAX_TOKENS = 40
 
@@ -27,7 +27,7 @@ class Decoder(BaseModel):
     _text_ids: List[int] = PrivateAttr(default_factory=list)
     _minus_id: int = PrivateAttr(default=0)
     _dot_id: int = PrivateAttr(default=0)
-    _quote_id: int = PrivateAttr(default=0)
+    _quote_ids: List[int] = PrivateAttr(default_factory=list)
     _ids: List[int] = PrivateAttr(default_factory=list)
 
     def __init__(
@@ -41,10 +41,11 @@ class Decoder(BaseModel):
         self._end_ids = [self._vocab.index(","), self._vocab.index("}")]
         self._minus_id = self._vocab.index("-")
         self._dot_id = self._vocab.index(".")
-        self._quote_id = self._vocab.index('"')
 
         for token_id, token in enumerate(self._vocab):
-            if token != "" and '"' not in token and "\n" not in token:
+            if '"' in token:
+                self._quote_ids.append(token_id)
+            elif token != "" and "\n" not in token:
                 self._text_ids.append(token_id)
 
     @classmethod
@@ -80,6 +81,7 @@ class Decoder(BaseModel):
         for function in self.functions:
             lines.append(self.format_function(function))
         lines.append("")
+        lines.append("Copy values exactly as written in the question.")
         lines.append(f"Question: {prompt}")
         lines.append('Answer: {"name": "')
 
@@ -160,17 +162,22 @@ class Decoder(BaseModel):
 
     def pick_string(self) -> str:
         """Make the LLM write a string and return it."""
-        allowed_ids = self._text_ids + [self._quote_id]
+        allowed_ids = self._text_ids + self._quote_ids
         result = ""
 
         for _ in range(MAX_TOKENS):
             chosen = self.pick_token(allowed_ids)
-            if chosen == self._quote_id:
+            if chosen in self._quote_ids:
+                # A token like '",' ends the string: keep what is before '"'.
+                before_quote = self._vocab[chosen].split('"')[0]
+                if before_quote.strip() != "":
+                    self.add_text(before_quote)
+                    result += before_quote
                 break
 
             result += self.add_token(chosen)
 
-        return result
+        return unescape(result)
 
     def _pick_parameters(
         self, function: FunctionDefinition

@@ -81,3 +81,12 @@ def is_start(start: str, words: List[str]) -> bool:
         if word.startswith(start):
             return True
     return False
+
+
+def unescape(text: str) -> str:
+    """Return text with its JSON escapes decoded (\\\\d becomes \\d)."""
+    try:
+        decoded: str = json.loads(f'"{text}"')
+        return decoded
+    except ValueError:
+        return text
