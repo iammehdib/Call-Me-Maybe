@@ -121,23 +121,35 @@ class Decoder(BaseModel):
 
         return result
 
+    def number_choices(self, result: str, integer: bool) -> List[int]:
+        """Return the tokens allowed after result in a number."""
+        is_empty = result == ""
+        has_digit = any(char.isdigit() for char in result)
+        has_dot = "." in result
+        ends_with_dot = result.endswith(".")
+
+        choices = list(self._digit_ids)
+
+        if is_empty:
+            choices.append(self._minus_id)
+
+        if not integer and has_digit and not has_dot:
+            choices.append(self._dot_id)
+
+        if has_digit and not ends_with_dot:
+            choices += self._end_ids
+
+        return choices
+
     def pick_number(self, integer: bool) -> str:
         """Make the LLM write a number and return it."""
         result = ""
 
         for _ in range(MAX_TOKENS):
-            has_digit = any(char.isdigit() for char in result)
-            allowed_ids = list(self._digit_ids)
-            if result == "":
-                allowed_ids.append(self._minus_id)
-            if not integer and has_digit and "." not in result:
-                allowed_ids.append(self._dot_id)
-            if has_digit and not result.endswith("."):
-                allowed_ids += self._end_ids
-
-            chosen = self.pick_token(allowed_ids)
+            chosen = self.pick_token(self.number_choices(result, integer))
             if chosen in self._end_ids:
                 break
+
             result += self.add_token(chosen)
 
         return result
@@ -151,6 +163,7 @@ class Decoder(BaseModel):
             chosen = self.pick_token(allowed_ids)
             if chosen == self._quote_id:
                 break
+
             result += self.add_token(chosen)
 
         return result
