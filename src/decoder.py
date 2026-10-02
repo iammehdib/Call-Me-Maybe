@@ -104,6 +104,14 @@ class Decoder(BaseModel):
 
         return int(np.argmax(masked))
 
+    def word_choices(self, result: str, words: List[str]) -> List[int]:
+        """Return the tokens that keep result on the way to one of words."""
+        choices: List[int] = []
+        for token_id, token in enumerate(self._vocab):
+            if token != "" and is_start(result + token, words):
+                choices.append(token_id)
+        return choices
+
     def pick_word(self, words: List[str]) -> str:
         """Make the LLM write one of words and return it."""
         result = ""
@@ -112,12 +120,8 @@ class Decoder(BaseModel):
             if result in words:
                 break
 
-            allowed_ids: List[int] = []
-            for token_id, token in enumerate(self._vocab):
-                if token != "" and is_start(result + token, words):
-                    allowed_ids.append(token_id)
-
-            result += self.add_token(self.pick_token(allowed_ids))
+            chosen = self.pick_token(self.word_choices(result, words))
+            result += self.add_token(chosen)
 
         return result
 
