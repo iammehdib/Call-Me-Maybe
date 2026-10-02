@@ -37,17 +37,27 @@ def main() -> None:
     if prompts is None or functions is None:
         sys.exit(1)
     if not functions:
-        print("Error: empty functions defined in file")
+        print(f"Error: no functions defined in {args.functions_definition}")
         sys.exit(1)
 
     model: Small_LLM_Model = Small_LLM_Model()
     decoder: Decoder = Decoder(model, functions)
     results: List[FunctionCall] = []
-    for prompt in prompts:
-        results.append(decoder.decode(prompt))
+    for index, prompt in enumerate(prompts, start=1):
+        result = decoder.decode(prompt)
+        print(f"[{index}/{len(prompts)}] {result.name} <- {prompt.prompt}")
+        results.append(result)
+
     if not write_results(args.output, results):
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nInterrupted by the user.")
+        sys.exit(1)
+    except Exception as error:
+        print(f"Error: {error}")
+        sys.exit(1)
