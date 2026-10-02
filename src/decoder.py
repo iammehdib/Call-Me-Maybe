@@ -1,5 +1,5 @@
 import json
-from typing import Callable, ClassVar, Dict, List, Tuple, Union
+from typing import ClassVar, Dict, List, Union
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -25,6 +25,10 @@ class Decoder(BaseModel):
     _digit_ids: List[int] = PrivateAttr(default_factory=list)
     _end_ids: List[int] = PrivateAttr(default_factory=list)
     _text_ids: List[int] = PrivateAttr(default_factory=list)
+    _minus_id: int = PrivateAttr(default=0)
+    _dot_id: int = PrivateAttr(default=0)
+    _quote_id: int = PrivateAttr(default=0)
+    _ids: List[int] = PrivateAttr(default_factory=list)
 
     def __init__(
         self, model: Small_LLM_Model, functions: List[FunctionDefinition]
@@ -35,6 +39,9 @@ class Decoder(BaseModel):
 
         self._digit_ids = [self._vocab.index(digit) for digit in "0123456789"]
         self._end_ids = [self._vocab.index(","), self._vocab.index("}")]
+        self._minus_id = self._vocab.index("-")
+        self._dot_id = self._vocab.index(".")
+        self._quote_id = self._vocab.index('"')
 
         for token_id, token in enumerate(self._vocab):
             if token != "" and '"' not in token and "\n" not in token:
@@ -68,7 +75,7 @@ class Decoder(BaseModel):
 
     def build_prompt(self, prompt: str) -> str:
         """Return the text given to the LLM for prompt."""
-        lines: list[str] = ["Available functions:"]
+        lines: List[str] = ["Available functions:"]
 
         for function in self.functions:
             lines.append(self.format_function(function))
@@ -78,139 +85,113 @@ class Decoder(BaseModel):
 
         return "\n".join(lines)
 
-    def add_text(self, input_ids: List[int], text: str) -> List[int]:
-        """Return input_ids followed by the tokens of text."""
+    def add_text(self, text: str) -> None:
+        """Add the tokens of a fixed text to what the LLM reads."""
         text_ids: List[int] = self.model.encode(text)[0].tolist()
-        return input_ids + text_ids
+        self._ids = self._ids + text_ids
 
-    def pick_token(
-        self, ids: List[int], allowed_ids: List[int]
-    ) -> int:
-        """Return the allowed token the LLM prefers after ids."""
-        logits = np.array(self.model.get_logits_from_input_ids(ids))
+    def add_token(self, token_id: int) -> str:
+        """Add one token to what the LLM reads and return its text."""
+        self._ids = self._ids + [token_id]
+        return self._vocab[token_id]
+
+    def pick_token(self, allowed_ids: List[int]) -> int:
+        """Return the allowed token the LLM prefers to write next."""
+        logits = np.array(self.model.get_logits_from_input_ids(self._ids))
 
         masked = np.full_like(logits, -np.inf)
         masked[allowed_ids] = logits[allowed_ids]
 
         return int(np.argmax(masked))
 
-    def _generate(
-        self,
-        input_ids: List[int],
-        rule: Callable[[str], List[int]],
-        stop_ids: List[int],
-    ) -> Tuple[str, List[int]]:
-        """Let the LLM write tokens allowed by rule until it stops.
-
-        Returns the written text and input_ids with its tokens appended.
-        """
+    def pick_word(self, words: List[str]) -> str:
+        """Make the LLM write one of words and return it."""
         result = ""
 
         for _ in range(MAX_TOKENS):
-            allowed_ids = rule(result)
-            if not allowed_ids:
+            if result in words:
                 break
 
-            chosen = self.pick_token(input_ids, allowed_ids)
-            if chosen in stop_ids:
+            allowed_ids: List[int] = []
+            for token_id, token in enumerate(self._vocab):
+                if token != "" and is_start(result + token, words):
+                    allowed_ids.append(token_id)
+
+            result += self.add_token(self.pick_token(allowed_ids))
+
+        return result
+
+    def pick_number(self, integer: bool) -> str:
+        """Make the LLM write a number and return it."""
+        result = ""
+
+        for _ in range(MAX_TOKENS):
+            has_digit = any(char.isdigit() for char in result)
+            allowed_ids = list(self._digit_ids)
+            if result == "":
+                allowed_ids.append(self._minus_id)
+            if not integer and has_digit and "." not in result:
+                allowed_ids.append(self._dot_id)
+            if has_digit and not result.endswith("."):
+                allowed_ids += self._end_ids
+
+            chosen = self.pick_token(allowed_ids)
+            if chosen in self._end_ids:
                 break
+            result += self.add_token(chosen)
 
-            input_ids = input_ids + [chosen]
-            result = result + self._vocab[chosen]
+        return result
 
-        return result, input_ids
+    def pick_string(self) -> str:
+        """Make the LLM write a string and return it."""
+        allowed_ids = self._text_ids + [self._quote_id]
+        result = ""
 
-    def _word_rule(self, result: str, words: List[str]) -> List[int]:
-        """Return the tokens that keep result on the way to a word."""
-        if result in words:
-            return []
+        for _ in range(MAX_TOKENS):
+            chosen = self.pick_token(allowed_ids)
+            if chosen == self._quote_id:
+                break
+            result += self.add_token(chosen)
 
-        allowed_ids: List[int] = []
-        for token_id, token in enumerate(self._vocab):
-            if token != "" and is_start(result + token, words):
-                allowed_ids.append(token_id)
-        return allowed_ids
-
-    def _number_rule(self, result: str, integer: bool) -> List[int]:
-        """Return the tokens that keep result a valid number."""
-        has_digit = any(char.isdigit() for char in result)
-        allowed_ids = list(self._digit_ids)
-
-        if result == "":
-            allowed_ids.append(self._vocab.index("-"))
-        if not integer and has_digit and "." not in result:
-            allowed_ids.append(self._vocab.index("."))
-        if has_digit and not result.endswith("."):
-            allowed_ids += self._end_ids
-        return allowed_ids
-
-    def pick_word(
-        self, input_ids: List[int], words: List[str]
-    ) -> Tuple[str, List[int]]:
-        """Return the LLM's pick among words and the new input_ids."""
-        return self._generate(
-            input_ids, lambda result: self._word_rule(result, words), []
-        )
-
-    def pick_number(
-        self, input_ids: List[int], integer: bool
-    ) -> Tuple[str, List[int]]:
-        """Return the number the LLM writes and the new input_ids."""
-        return self._generate(
-            input_ids,
-            lambda result: self._number_rule(result, integer),
-            self._end_ids,
-        )
-
-    def pick_string(self, input_ids: List[int]) -> Tuple[str, List[int]]:
-        """Return the string the LLM writes and the new input_ids."""
-        quote_id = self._vocab.index('"')
-        return self._generate(
-            input_ids, lambda result: self._text_ids + [quote_id], [quote_id]
-        )
+        return result
 
     def _pick_parameters(
-        self, input_ids: List[int], function: FunctionDefinition
+        self, function: FunctionDefinition
     ) -> Dict[str, Union[float, int, str, bool]]:
         """Return the value the LLM writes for every parameter."""
         params: Dict[str, Union[float, int, str, bool]] = {}
-        input_ids = self.add_text(input_ids, '", "parameters": {')
+        self.add_text('", "parameters": {')
 
         for key, param in function.parameters.items():
             if params:
-                input_ids = self.add_text(input_ids, ", ")
-            input_ids = self.add_text(input_ids, f'"{key}": ')
+                self.add_text(", ")
+            self.add_text(f'"{key}": ')
 
             match param.type:
                 case "number":
-                    text, input_ids = self.pick_number(input_ids, False)
-                    params[key] = float(text)
+                    params[key] = float(self.pick_number(integer=False))
                 case "integer":
-                    text, input_ids = self.pick_number(input_ids, True)
-                    params[key] = int(text)
+                    params[key] = int(self.pick_number(integer=True))
                 case "string":
-                    input_ids = self.add_text(input_ids, '"')
-                    text, input_ids = self.pick_string(input_ids)
-                    input_ids = self.add_text(input_ids, '"')
-                    params[key] = text
+                    self.add_text('"')
+                    params[key] = self.pick_string()
+                    self.add_text('"')
                 case "boolean":
-                    words = ["true", "false"]
-                    text, input_ids = self.pick_word(input_ids, words)
-                    params[key] = text == "true"
+                    params[key] = self.pick_word(["true", "false"]) == "true"
 
         return params
 
     def decode(self, prompt_input: PromptInput) -> FunctionCall:
         """Return the function call the LLM chooses for prompt_input."""
-        text = self.build_prompt(prompt_input.prompt)
-        input_ids: List[int] = self.model.encode(text)[0].tolist()
+        self._ids = []
+        self.add_text(self.build_prompt(prompt_input.prompt))
 
         names = [function.name for function in self.functions]
-        name, input_ids = self.pick_word(input_ids, names)
+        name = self.pick_word(names)
         function = self.functions[names.index(name)]
 
         return FunctionCall(
             prompt=prompt_input.prompt,
             name=name,
-            parameters=self._pick_parameters(input_ids, function),
+            parameters=self._pick_parameters(function),
         )
