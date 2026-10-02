@@ -169,23 +169,34 @@ class Decoder(BaseModel):
             input_ids, lambda result: self._text_ids + [quote_id], [quote_id]
         )
 
-    # TODO: Remake this better
     def _pick_parameters(
-        self, function: FunctionDefinition
+        self, input_ids: List[int], function: FunctionDefinition
     ) -> Dict[str, Union[float, int, str, bool]]:
-        """Return a value for every parameter of function."""
+        """Return the value the LLM writes for every parameter."""
         params: Dict[str, Union[float, int, str, bool]] = {}
+        input_ids = self.add_text(input_ids, '", "parameters": {')
 
         for key, param in function.parameters.items():
+            if params:
+                input_ids = self.add_text(input_ids, ", ")
+            input_ids = self.add_text(input_ids, f'"{key}": ')
+
             match param.type:
                 case "number":
-                    params[key] = 0.0
+                    text, input_ids = self.pick_number(input_ids, False)
+                    params[key] = float(text)
                 case "integer":
-                    params[key] = 0
+                    text, input_ids = self.pick_number(input_ids, True)
+                    params[key] = int(text)
                 case "string":
-                    params[key] = ""
+                    input_ids = self.add_text(input_ids, '"')
+                    text, input_ids = self.pick_string(input_ids)
+                    input_ids = self.add_text(input_ids, '"')
+                    params[key] = text
                 case "boolean":
-                    params[key] = False
+                    words = ["true", "false"]
+                    text, input_ids = self.pick_word(input_ids, words)
+                    params[key] = text == "true"
 
         return params
 
@@ -201,5 +212,5 @@ class Decoder(BaseModel):
         return FunctionCall(
             prompt=prompt_input.prompt,
             name=name,
-            parameters=self._pick_parameters(function)
+            parameters=self._pick_parameters(input_ids, function),
         )
