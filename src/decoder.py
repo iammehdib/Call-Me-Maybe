@@ -1,5 +1,5 @@
 import json
-from typing import ClassVar, Dict, List, Tuple, Union
+from typing import Callable, ClassVar, Dict, List, Tuple, Union
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -22,6 +22,9 @@ class Decoder(BaseModel):
     functions: List[FunctionDefinition]
 
     _vocab: List[str] = PrivateAttr(default_factory=list)
+    _digit_ids: List[int] = PrivateAttr(default_factory=list)
+    _end_ids: List[int] = PrivateAttr(default_factory=list)
+    _text_ids: List[int] = PrivateAttr(default_factory=list)
 
     def __init__(
         self, model: Small_LLM_Model, functions: List[FunctionDefinition]
@@ -29,6 +32,13 @@ class Decoder(BaseModel):
         """Validate the fields, then get the vocabulary of model."""
         super().__init__(model=model, functions=functions)
         self._vocab = self.get_vocab(model)
+
+        self._digit_ids = [self._vocab.index(digit) for digit in "0123456789"]
+        self._end_ids = [self._vocab.index(","), self._vocab.index("}")]
+
+        for token_id, token in enumerate(self._vocab):
+            if token != "" and '"' not in token and "\n" not in token:
+                self._text_ids.append(token_id)
 
     @classmethod
     def get_vocab(cls, model: Small_LLM_Model) -> List[str]:
@@ -68,6 +78,11 @@ class Decoder(BaseModel):
 
         return "\n".join(lines)
 
+    def add_text(self, input_ids: List[int], text: str) -> List[int]:
+        """Return input_ids followed by the tokens of text."""
+        text_ids: List[int] = self.model.encode(text)[0].tolist()
+        return input_ids + text_ids
+
     def pick_token(
         self, ids: List[int], allowed_ids: List[int]
     ) -> int:
@@ -79,28 +94,82 @@ class Decoder(BaseModel):
 
         return int(np.argmax(masked))
 
+    def _generate(
+        self,
+        input_ids: List[int],
+        rule: Callable[[str], List[int]],
+        stop_ids: List[int],
+    ) -> Tuple[str, List[int]]:
+        """Let the LLM write tokens allowed by rule until it stops.
+
+        Returns the written text and input_ids with its tokens appended.
+        """
+        result = ""
+
+        for _ in range(MAX_TOKENS):
+            allowed_ids = rule(result)
+            if not allowed_ids:
+                break
+
+            chosen = self.pick_token(input_ids, allowed_ids)
+            if chosen in stop_ids:
+                break
+
+            input_ids = input_ids + [chosen]
+            result = result + self._vocab[chosen]
+
+        return result, input_ids
+
+    def _word_rule(self, result: str, words: List[str]) -> List[int]:
+        """Return the tokens that keep result on the way to a word."""
+        if result in words:
+            return []
+
+        allowed_ids: List[int] = []
+        for token_id, token in enumerate(self._vocab):
+            if token != "" and is_start(result + token, words):
+                allowed_ids.append(token_id)
+        return allowed_ids
+
+    def _number_rule(self, result: str, integer: bool) -> List[int]:
+        """Return the tokens that keep result a valid number."""
+        has_digit = any(char.isdigit() for char in result)
+        allowed_ids = list(self._digit_ids)
+
+        if result == "":
+            allowed_ids.append(self._vocab.index("-"))
+        if not integer and has_digit and "." not in result:
+            allowed_ids.append(self._vocab.index("."))
+        if has_digit and not result.endswith("."):
+            allowed_ids += self._end_ids
+        return allowed_ids
+
     def pick_word(
         self, input_ids: List[int], words: List[str]
     ) -> Tuple[str, List[int]]:
         """Return the LLM's pick among words and the new input_ids."""
-        result = ""
+        return self._generate(
+            input_ids, lambda result: self._word_rule(result, words), []
+        )
 
-        for _ in range(MAX_TOKENS):
-            allowed_ids: List[int] = []
-            for token_id, token in enumerate(self._vocab):
-                candidate_word = result + token
-                if token != "" and is_start(candidate_word, words):
-                    allowed_ids.append(token_id)
+    def pick_number(
+        self, input_ids: List[int], integer: bool
+    ) -> Tuple[str, List[int]]:
+        """Return the number the LLM writes and the new input_ids."""
+        return self._generate(
+            input_ids,
+            lambda result: self._number_rule(result, integer),
+            self._end_ids,
+        )
 
-            chosen = self.pick_token(input_ids, allowed_ids)
-            input_ids = input_ids + [chosen]
-            result = result + self._vocab[chosen]
+    def pick_string(self, input_ids: List[int]) -> Tuple[str, List[int]]:
+        """Return the string the LLM writes and the new input_ids."""
+        quote_id = self._vocab.index('"')
+        return self._generate(
+            input_ids, lambda result: self._text_ids + [quote_id], [quote_id]
+        )
 
-            if result in words:
-                break
-
-        return result, input_ids
-
+    # TODO: Remake this better
     def _pick_parameters(
         self, function: FunctionDefinition
     ) -> Dict[str, Union[float, int, str, bool]]:
