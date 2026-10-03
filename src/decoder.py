@@ -25,7 +25,8 @@ class Decoder(BaseModel):
     _digit_ids: List[int] = PrivateAttr(default_factory=list)
     _end_ids: List[int] = PrivateAttr(default_factory=list)
     _text_ids: List[int] = PrivateAttr(default_factory=list)
-    _minus_id: int = PrivateAttr(default=0)
+    _space_id: int = PrivateAttr(default=0)
+    _space_minus_id: int = PrivateAttr(default=0)
     _dot_id: int = PrivateAttr(default=0)
     _quote_ids: List[int] = PrivateAttr(default_factory=list)
     _ids: List[int] = PrivateAttr(default_factory=list)
@@ -39,7 +40,8 @@ class Decoder(BaseModel):
 
         self._digit_ids = [self._vocab.index(digit) for digit in "0123456789"]
         self._end_ids = [self._vocab.index(","), self._vocab.index("}")]
-        self._minus_id = self._vocab.index("-")
+        self._space_id = self._vocab.index(" ")
+        self._space_minus_id = self._vocab.index(" -")
         self._dot_id = self._vocab.index(".")
 
         for token_id, token in enumerate(self._vocab):
@@ -122,6 +124,12 @@ class Decoder(BaseModel):
             if result in words:
                 break
 
+            # Only one word left: write the rest without asking the LLM.
+            remaining = [word for word in words if word.startswith(result)]
+            if len(remaining) == 1:
+                self.add_text(remaining[0][len(result):])
+                return remaining[0]
+
             chosen = self.pick_token(self.word_choices(result, words))
             result += self.add_token(chosen)
 
@@ -129,15 +137,16 @@ class Decoder(BaseModel):
 
     def number_choices(self, result: str, integer: bool) -> List[int]:
         """Return the tokens allowed after result in a number."""
-        is_empty = result == ""
-        has_digit = any(char.isdigit() for char in result)
-        has_dot = "." in result
-        ends_with_dot = result.endswith(".")
+        # After '"a":' the LLM writes " 42" or " -42": start with " " or " -".
+        if result == "":
+            return [self._space_id, self._space_minus_id]
+
+        number = result.strip()
+        has_digit = any(char.isdigit() for char in number)
+        has_dot = "." in number
+        ends_with_dot = number.endswith(".")
 
         choices = list(self._digit_ids)
-
-        if is_empty:
-            choices.append(self._minus_id)
 
         if not integer and has_digit and not has_dot:
             choices.append(self._dot_id)
@@ -170,6 +179,10 @@ class Decoder(BaseModel):
             if chosen in self._quote_ids:
                 # A token like '",' ends the string: keep what is before '"'.
                 before_quote = self._vocab[chosen].split('"')[0]
+                if (result + before_quote).endswith("\\"):
+                    # '\"' is a quote inside the string: keep writing.
+                    result += self.add_token(chosen)
+                    continue
                 if before_quote.strip() != "":
                     self.add_text(before_quote)
                     result += before_quote
@@ -189,7 +202,7 @@ class Decoder(BaseModel):
         for key, param in function.parameters.items():
             if params:
                 self.add_text(", ")
-            self.add_text(f'"{key}": ')
+            self.add_text(f'"{key}":')
 
             match param.type:
                 case "number":
@@ -197,10 +210,12 @@ class Decoder(BaseModel):
                 case "integer":
                     params[key] = int(self.pick_number(integer=True))
                 case "string":
+                    self.add_text(" ")
                     self.add_text('"')
                     params[key] = self.pick_string()
                     self.add_text('"')
                 case "boolean":
+                    self.add_text(" ")
                     params[key] = self.pick_word(["true", "false"]) == "true"
 
         return params
