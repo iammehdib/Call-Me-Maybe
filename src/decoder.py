@@ -109,9 +109,11 @@ class Decoder(BaseModel):
     def word_choices(self, result: str, words: List[str]) -> List[int]:
         """Return the tokens that keep result on the way to one of words."""
         choices: List[int] = []
+
         for token_id, token in enumerate(self._vocab):
             if token != "" and is_start(result + token, words):
                 choices.append(token_id)
+
         return choices
 
     def pick_word(self, words: List[str]) -> str:
@@ -163,7 +165,9 @@ class Decoder(BaseModel):
         result = ""
 
         for _ in range(MAX_TOKENS):
+
             chosen = self.pick_token(allowed_ids)
+
             if chosen in self._quote_ids:
                 # A token like '",' ends the string: keep what is before '"'.
                 before_quote = self._vocab[chosen].split('"')[0]
