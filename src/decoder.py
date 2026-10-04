@@ -129,20 +129,17 @@ class Decoder(BaseModel):
 
     def number_choices(self, result: str, integer: bool) -> List[int]:
         """Return the tokens allowed after result in a number."""
-        is_empty = result == ""
         has_digit = any(char.isdigit() for char in result)
-        has_dot = "." in result
-        ends_with_dot = result.endswith(".")
-
         choices = list(self._digit_ids)
 
-        if is_empty:
+        if result == "":
             choices.append(self._minus_id)
 
+        has_dot = "." in result
         if not integer and has_digit and not has_dot:
             choices.append(self._dot_id)
 
-        if has_digit and not ends_with_dot:
+        if has_digit and not result.endswith("."):
             choices += self._end_ids
 
         return choices
