@@ -29,6 +29,21 @@ class Decoder(BaseModel):
         super().__init__(model=model, functions=functions)
         self._vocab = Vocabulary(model)
 
+    def decode(self, prompt_input: PromptInput) -> FunctionCall:
+        """Return the function call the LLM chooses for prompt_input."""
+        self._ids = []
+        self.add_text(self.build_prompt(prompt_input.prompt))
+
+        names = [function.name for function in self.functions]
+        name = self.pick_word(names)
+        function = self.functions[names.index(name)]
+
+        return FunctionCall(
+            prompt=prompt_input.prompt,
+            name=name,
+            parameters=self._pick_parameters(function),
+        )
+
     @staticmethod
     def format_function(function: FunctionDefinition) -> str:
         """Return a one-line description of function for the LLM."""
@@ -184,18 +199,3 @@ class Decoder(BaseModel):
                     params[key] = self.pick_word(["true", "false"]) == "true"
 
         return params
-
-    def decode(self, prompt_input: PromptInput) -> FunctionCall:
-        """Return the function call the LLM chooses for prompt_input."""
-        self._ids = []
-        self.add_text(self.build_prompt(prompt_input.prompt))
-
-        names = [function.name for function in self.functions]
-        name = self.pick_word(names)
-        function = self.functions[names.index(name)]
-
-        return FunctionCall(
-            prompt=prompt_input.prompt,
-            name=name,
-            parameters=self._pick_parameters(function),
-        )
