@@ -1,5 +1,4 @@
-import json
-from typing import ClassVar, Dict, List, Union
+from typing import Dict, List, Union
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -7,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from llm_sdk import Small_LLM_Model
 from src.models import FunctionCall, FunctionDefinition, PromptInput
 from src.utils import is_start, unescape
+from src.vocabulary import Vocabulary
 
 MAX_TOKENS = 40
 
@@ -16,19 +16,10 @@ class Decoder(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    vocab_cache: ClassVar[Dict[str, List[str]]] = {}
-
     model: Small_LLM_Model
     functions: List[FunctionDefinition]
 
-    _vocab: List[str] = PrivateAttr(default_factory=list)
-    _digit_ids: List[int] = PrivateAttr(default_factory=list)
-    _end_ids: List[int] = PrivateAttr(default_factory=list)
-    _text_ids: List[int] = PrivateAttr(default_factory=list)
-    _space_id: int = PrivateAttr(default=0)
-    _space_minus_id: int = PrivateAttr(default=0)
-    _dot_id: int = PrivateAttr(default=0)
-    _quote_ids: List[int] = PrivateAttr(default_factory=list)
+    _vocab: Vocabulary = PrivateAttr()
     _ids: List[int] = PrivateAttr(default_factory=list)
 
     def __init__(
@@ -36,35 +27,7 @@ class Decoder(BaseModel):
     ) -> None:
         """Validate the fields, then get the vocabulary of model."""
         super().__init__(model=model, functions=functions)
-        self._vocab = self.get_vocab(model)
-
-        self._digit_ids = [self._vocab.index(digit) for digit in "0123456789"]
-        self._end_ids = [self._vocab.index(","), self._vocab.index("}")]
-        self._space_id = self._vocab.index(" ")
-        self._space_minus_id = self._vocab.index(" -")
-        self._dot_id = self._vocab.index(".")
-
-        for token_id, token in enumerate(self._vocab):
-            if '"' in token:
-                self._quote_ids.append(token_id)
-            elif token != "" and "\n" not in token:
-                self._text_ids.append(token_id)
-
-    @classmethod
-    def get_vocab(cls, model: Small_LLM_Model) -> List[str]:
-        """Return the text of every token of model, cached per vocab file."""
-        path = model.get_path_to_vocab_file()
-        if path in cls.vocab_cache:
-            return cls.vocab_cache[path]
-
-        with open(path, "r", encoding="utf-8") as f:
-            token_to_id: Dict[str, int] = json.load(f)
-
-        vocab: List[str] = []
-        for token_id in range(len(token_to_id)):
-            vocab.append(model.decode([token_id]))
-        cls.vocab_cache[path] = vocab
-        return vocab
+        self._vocab = Vocabulary(model)
 
     @staticmethod
     def format_function(function: FunctionDefinition) -> str:
@@ -82,6 +45,7 @@ class Decoder(BaseModel):
 
         for function in self.functions:
             lines.append(self.format_function(function))
+
         lines.append("")
         lines.append("Copy values exactly as written in the question.")
         lines.append(f"Question: {prompt}")
@@ -97,7 +61,7 @@ class Decoder(BaseModel):
     def add_token(self, token_id: int) -> str:
         """Add one token to what the LLM reads and return its text."""
         self._ids = self._ids + [token_id]
-        return self._vocab[token_id]
+        return self._vocab.texts[token_id]
 
     def pick_token(self, allowed_ids: List[int]) -> int:
         """Return the allowed token the LLM prefers to write next."""
@@ -112,7 +76,7 @@ class Decoder(BaseModel):
         """Return the tokens that keep result on the way to one of words."""
         choices: List[int] = []
 
-        for token_id, token in enumerate(self._vocab):
+        for token_id, token in enumerate(self._vocab.texts):
             if token != "" and is_start(result + token, words):
                 choices.append(token_id)
 
@@ -141,17 +105,17 @@ class Decoder(BaseModel):
         """Return the tokens allowed after result in a number."""
         # After '"a":' the LLM writes " 42" or " -42": start with " " or " -".
         if result == "":
-            return [self._space_id, self._space_minus_id]
+            return [self._vocab.space_id, self._vocab.space_minus_id]
 
         has_digit = any(char.isdigit() for char in result)
-        choices = list(self._digit_ids)
+        choices = list(self._vocab.digit_ids)
 
         has_dot = "." in result
         if not integer and has_digit and not has_dot:
-            choices.append(self._dot_id)
+            choices.append(self._vocab.dot_id)
 
         if has_digit and not result.endswith("."):
-            choices += self._end_ids
+            choices += self._vocab.end_ids
 
         return choices
 
@@ -161,7 +125,7 @@ class Decoder(BaseModel):
 
         for _ in range(MAX_TOKENS):
             chosen = self.pick_token(self.number_choices(result, integer))
-            if chosen in self._end_ids:
+            if chosen in self._vocab.end_ids:
                 break
 
             result += self.add_token(chosen)
@@ -170,16 +134,16 @@ class Decoder(BaseModel):
 
     def pick_string(self) -> str:
         """Make the LLM write a string and return it."""
-        allowed_ids = self._text_ids + self._quote_ids
+        allowed_ids = self._vocab.text_ids + self._vocab.quote_ids
         result = ""
 
         for _ in range(MAX_TOKENS):
 
             chosen = self.pick_token(allowed_ids)
 
-            if chosen in self._quote_ids:
+            if chosen in self._vocab.quote_ids:
                 # A token like '",' ends the string: keep what is before '"'.
-                before_quote = self._vocab[chosen].split('"')[0]
+                before_quote = self._vocab.texts[chosen].split('"')[0]
                 if (result + before_quote).endswith("\\"):
                     # '\"' is a quote inside the string: keep writing.
                     result += self.add_token(chosen)
