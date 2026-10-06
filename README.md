@@ -121,9 +121,16 @@ constrained, the output file is always valid JSON with exactly the keys
 
 ## Design decisions
 
-- **One class per responsibility.** `models.py` holds the pydantic data
-  classes, `utils.py` reads and writes the files, `decoder.py` contains the
-  `Decoder` class that does the constrained decoding.
+- **One file per responsibility.**
+
+  | File | Role |
+  |---|---|
+  | `__main__.py` | reads the arguments and runs the program |
+  | `models.py` | the pydantic data classes |
+  | `files.py` | reads the input files and writes the output file |
+  | `vocabulary.py` | the text of every token and the token ids used |
+  | `prompt.py` | the text given to the model |
+  | `decoder.py` | the `Decoder` class that does the constrained decoding |
 - **Pydantic everywhere.** All classes use pydantic, as required. The input
   files are validated when they are loaded, so a wrong type is reported with
   a clear message instead of crashing later.

@@ -6,7 +6,7 @@ from llm_sdk import Small_LLM_Model
 
 from src.decoder import Decoder
 from src.models import FunctionCall, FunctionDefinition, PromptInput
-from src.utils import load_functions, load_prompts, write_results
+from src.files import load_functions, load_prompts, write_results
 
 
 def main() -> None:

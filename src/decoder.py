@@ -1,3 +1,4 @@
+import json
 from typing import Dict, List, Union
 
 import numpy as np
@@ -6,10 +7,26 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from llm_sdk import Small_LLM_Model
 from src.models import FunctionCall, FunctionDefinition, PromptInput
 from src.prompt import build_prompt
-from src.utils import is_start, unescape
 from src.vocabulary import Vocabulary
 
 MAX_TOKENS = 40
+
+
+def is_start(start: str, words: List[str]) -> bool:
+    """Return True if at least one of words starts with start."""
+    for word in words:
+        if word.startswith(start):
+            return True
+    return False
+
+
+def unescape(text: str) -> str:
+    """Return text with its JSON escapes decoded (\\\\d becomes \\d)."""
+    try:
+        decoded: str = json.loads(f'"{text}"')
+        return decoded
+    except ValueError:
+        return text
 
 
 class Decoder(BaseModel):
