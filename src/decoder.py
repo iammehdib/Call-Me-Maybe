@@ -9,7 +9,7 @@ from src.models import FunctionCall, FunctionDefinition, PromptInput
 from src.prompt import build_prompt
 from src.vocabulary import Vocabulary
 
-MAX_TOKENS = 40
+MAX_TOKENS = 100
 
 
 def is_start(start: str, words: List[str]) -> bool:
