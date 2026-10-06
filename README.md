@@ -61,18 +61,20 @@ uv run python -m src \
 
 ## Example usage
 
-Input prompt:
+With a file `my_prompts.json` containing one prompt:
 
 ```json
 [{"prompt": "Greet shrek"}]
 ```
 
-Command and output:
+Command:
 
 ```
-$ uv run python -m src
+$ uv run python -m src --input my_prompts.json --output my_answers.json
 [1/1] fn_greet <- Greet shrek
 ```
+
+Content of `my_answers.json`:
 
 ```json
 [
@@ -136,10 +138,13 @@ constrained, the output file is always valid JSON with exactly the keys
   a clear message instead of crashing later.
 - **The program writes the JSON, the model fills the gaps.** This keeps the
   output valid by construction and avoids wasting model calls on fixed text.
-- **Precomputed token lists.** Digits, quote tokens and text tokens are found
-  once when the decoder is created.
-- **Vocabulary cache.** The vocabulary is cached per vocabulary file, so it is
-  computed once even if several decoders are created.
+- **Precomputed token lists.** The `Vocabulary` class finds the digits, quote
+  tokens and text tokens once, when the decoder is created.
+- **Vocabulary cache.** The text of every token is cached per vocabulary
+  file, so it is read once even if several decoders are created.
+- **CPU fallback.** If the model cannot be loaded on the default device (for
+  example a Linux machine with a GPU but without the `accelerate` package),
+  it is loaded on the CPU instead.
 - **`number` is always a float**, following the examples of the subject.
 - **Greedy choice.** The best allowed token is always taken (no random
   sampling), so the program gives the same answer on every run.
