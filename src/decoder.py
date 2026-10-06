@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from llm_sdk import Small_LLM_Model
 from src.models import FunctionCall, FunctionDefinition, PromptInput
+from src.prompt import build_prompt
 from src.utils import is_start, unescape
 from src.vocabulary import Vocabulary
 
@@ -32,7 +33,7 @@ class Decoder(BaseModel):
     def decode(self, prompt_input: PromptInput) -> FunctionCall:
         """Return the function call the LLM chooses for prompt_input."""
         self._ids = []
-        self.add_text(self.build_prompt(prompt_input.prompt))
+        self.add_text(build_prompt(prompt_input.prompt, self.functions))
 
         names = [function.name for function in self.functions]
         name = self.pick_word(names)
@@ -43,30 +44,6 @@ class Decoder(BaseModel):
             name=name,
             parameters=self._pick_parameters(function),
         )
-
-    @staticmethod
-    def format_function(function: FunctionDefinition) -> str:
-        """Return a one-line description of function for the LLM."""
-        params: str = ", ".join(
-            f"{name}: {param.type}"
-            for name, param in function.parameters.items()
-        )
-
-        return f"- {function.name}({params}): {function.description}"
-
-    def build_prompt(self, prompt: str) -> str:
-        """Return the text given to the LLM for prompt."""
-        lines: List[str] = ["Available functions:"]
-
-        for function in self.functions:
-            lines.append(self.format_function(function))
-
-        lines.append("")
-        lines.append("Copy values exactly as written in the question.")
-        lines.append(f"Question: {prompt}")
-        lines.append('Answer: {"name": "')
-
-        return "\n".join(lines)
 
     def add_text(self, text: str) -> None:
         """Add the tokens of a fixed text to what the LLM reads."""
