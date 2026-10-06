@@ -9,6 +9,16 @@ from src.models import FunctionCall, FunctionDefinition, PromptInput
 from src.files import load_functions, load_prompts, write_results
 
 
+def load_model() -> Small_LLM_Model:
+    """Load the model, on the CPU if the default device cannot be used."""
+    try:
+        return Small_LLM_Model()
+    except Exception as error:
+        print(f"Warning: {error}")
+        print("Warning: loading the model on the CPU instead.")
+        return Small_LLM_Model(device="cpu")
+
+
 def main() -> None:
     """Parse the command line arguments and run the program."""
     parser = argparse.ArgumentParser(
@@ -40,7 +50,7 @@ def main() -> None:
         print(f"Error: no functions defined in {args.functions_definition}")
         sys.exit(1)
 
-    model: Small_LLM_Model = Small_LLM_Model()
+    model = load_model()
     decoder: Decoder = Decoder(model, functions)
     results: List[FunctionCall] = []
     for index, prompt in enumerate(prompts, start=1):
