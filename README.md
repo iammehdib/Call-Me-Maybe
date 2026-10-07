@@ -244,8 +244,7 @@ An AI assistant (Claude) was used during this project:
 - to help write test cases and analyse the results;
 - to draft this README.
 
-The parts of the project concerned are mainly the constrained decoding
-(`src/decoder.py`, `src/vocabulary.py`), the checks on the input files
-(`src/files.py`, `src/models.py`), the extra test files and this README.
+It was mostly used on the constrained decoding logic, the tests and the
+documentation.
 
 Every part of the code was read, tested and understood before being kept.
