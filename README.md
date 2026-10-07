@@ -135,7 +135,10 @@ constrained, the output file is always valid JSON with exactly the keys
   | `decoder.py` | the `Decoder` class that does the constrained decoding |
 - **Pydantic everywhere.** All classes use pydantic, as required. The input
   files are validated when they are loaded, so a wrong type is reported with
-  a clear message instead of crashing later.
+  a clear message instead of crashing later. Function and parameter names
+  must be valid identifiers (letters, digits and `_`, not empty) and two
+  functions cannot have the same name. A function without parameters is
+  allowed.
 - **The program writes the JSON, the model fills the gaps.** This keeps the
   output valid by construction and avoids wasting model calls on fixed text.
 - **Precomputed token lists.** The `Vocabulary` class finds the digits, quote
@@ -202,8 +205,9 @@ Measured on CPU:
   string parameters, negative numbers, decimals, large numbers, numbers
   written in words, quotes inside strings, accents and empty strings.
 - Broken inputs were tested: missing files, invalid JSON, a JSON object
-  instead of a list, wrong types, unknown parameter types, an output path
-  that cannot be written. The program prints a clear error and exits with
+  instead of a list, wrong types, unknown parameter types, empty or invalid
+  function and parameter names, two functions with the same name, an output
+  path that cannot be written. The program prints a clear error and exits with
   code 1 instead of crashing.
 - The program was run twice on the same input to check that it always gives
   the same output, on Windows and on Linux.
