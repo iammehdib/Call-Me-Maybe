@@ -151,12 +151,11 @@ constrained, the output file is always valid JSON with exactly the keys
 
 ## Performance analysis
 
-Measured on CPU, graded with the provided moulinette:
+Measured on CPU:
 
 | Test set | Score | Time (model loading included) |
 |---|---|---|
-| Public set | 11 / 11 (100%) | about 2 min |
-| Private set | 11 / 11 (100%) | about 3 min |
+| Provided test files (`data/input`) | 11 / 11 (100%) | about 2 min 30 s |
 | Extra tests (22 prompts, 11 new functions) | 21 / 22 | about 5 min |
 
 - **Valid JSON:** 100% of the outputs, guaranteed by construction.
@@ -177,15 +176,16 @@ Measured on CPU, graded with the provided moulinette:
   quote now ends the string.
 - **Escaped characters.** Inside JSON the model writes `\\d` for `\d`; the
   strings are decoded with `json.loads` at the end.
-- **Quotes inside a string.** In `Say "hello" to {name}` the model writes
+- **Quotes inside a string.** In `She said "hi" twice` the model writes
   `\"`, which first ended the string. A quote right after a backslash is now
   kept in the string.
 - **Negative numbers lost their sign.** Qwen writes `-12` after a colon as
   the token `" -"` (space + minus). Since the program already wrote the
   space, the model could not place its minus sign. The key is now written
   without the space and a number starts with `" "` or `" -"`.
-- **A leading space in strings.** For paths like `/home/user/data.json` the
-  model picks the token `" /"`; the leading space is removed at the end.
+- **A leading space in strings.** For a value starting with `/`, like a file
+  path, the model picks the token `" /"`; the leading space is removed at the
+  end.
 - **The model sometimes applies the function.** For "Convert 'Café au lait'
   to upper case" it may write `CAFÉ AU LAIT` instead of copying the text.
   The prompt asks to copy values exactly, which fixes most cases, but this
@@ -195,16 +195,8 @@ Measured on CPU, graded with the provided moulinette:
 
 ## Testing strategy
 
-- The provided moulinette is used on both sets:
-
-  ```bash
-  cd moulinette
-  uv sync
-  uv run python -m moulinette prepare_exercises --set private
-  uv run python -m moulinette grade_student_answers --set private \
-      --student_answer_path <path to function_calls.json>
-  ```
-
+- The answers for the provided prompts (`data/input`) are checked one by one
+  against the expected function and arguments.
 - Extra function definitions and prompts were written to test other cases:
   `integer` and `boolean` parameters, functions without parameters, several
   string parameters, negative numbers, decimals, large numbers, numbers
@@ -213,6 +205,8 @@ Measured on CPU, graded with the provided moulinette:
   instead of a list, wrong types, unknown parameter types, an output path
   that cannot be written. The program prints a clear error and exits with
   code 1 instead of crashing.
+- The program was run twice on the same input to check that it always gives
+  the same output, on Windows and on Linux.
 - `make lint` and `make lint-strict` pass without errors.
 
 ## Resources
