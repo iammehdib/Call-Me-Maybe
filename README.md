@@ -38,9 +38,9 @@ The model is downloaded from Hugging Face the first time the program runs.
 If the home quota is too small for `torch` and the model:
 
 ```bash
-export UV_CACHE_DIR=/sgoinfre/$USER/.cache/uv
-export HF_HOME=/sgoinfre/$USER/.cache/huggingface
-export UV_PROJECT_ENVIRONMENT=/sgoinfre/$USER/call-me-maybe-venv
+export UV_CACHE_DIR=/sgoinfre/students/$USER/.cache/uv
+export HF_HOME=/sgoinfre/students/$USER/.cache/huggingface
+export UV_PROJECT_ENVIRONMENT=/sgoinfre/students/$USER/call-me-maybe-venv
 ```
 
 ### Usage
@@ -243,5 +243,9 @@ An AI assistant (Claude) was used during this project:
 - to review the code, find bugs and suggest simpler ways to write it;
 - to help write test cases and analyse the results;
 - to draft this README.
+
+The parts of the project concerned are mainly the constrained decoding
+(`src/decoder.py`, `src/vocabulary.py`), the checks on the input files
+(`src/files.py`, `src/models.py`), the extra test files and this README.
 
 Every part of the code was read, tested and understood before being kept.
