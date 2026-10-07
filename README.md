@@ -33,6 +33,16 @@ make install        # or: uv sync
 
 The model is downloaded from Hugging Face the first time the program runs.
 
+### Installation on the 42 computers
+
+If the home quota is too small for `torch` and the model:
+
+```bash
+export UV_CACHE_DIR=/sgoinfre/$USER/.cache/uv
+export HF_HOME=/sgoinfre/$USER/.cache/huggingface
+export UV_PROJECT_ENVIRONMENT=/sgoinfre/$USER/call-me-maybe-venv
+```
+
 ### Usage
 
 ```bash
