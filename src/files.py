@@ -37,6 +37,12 @@ def load_functions(file_name: str) -> Optional[List[FunctionDefinition]]:
     except ValidationError as e:
         print(f"Error: invalid function in {file_name}:\n{e}")
         return None
+
+    names = [function.name for function in functions]
+    for name in names:
+        if names.count(name) > 1:
+            print(f"Error: function {name} is defined twice in {file_name}")
+            return None
     return functions
 
 

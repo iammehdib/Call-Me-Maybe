@@ -1,5 +1,8 @@
-from typing import Dict, Literal, Union
-from pydantic import BaseModel
+from typing import Annotated, Dict, Literal, Union
+from pydantic import BaseModel, StringConstraints
+
+# A valid identifier: letters, digits and "_", not empty, no leading digit.
+Name = Annotated[str, StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")]
 
 
 class ParamType(BaseModel):
@@ -11,9 +14,9 @@ class ParamType(BaseModel):
 class FunctionDefinition(BaseModel):
     """A callable function the LLM can choose from."""
 
-    name: str
+    name: Name
     description: str
-    parameters: Dict[str, ParamType]
+    parameters: Dict[Name, ParamType]
     returns: ParamType
 
 
